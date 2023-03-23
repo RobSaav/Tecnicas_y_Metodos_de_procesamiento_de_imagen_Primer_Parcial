@@ -1,0 +1,160 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Capturar video de la cámara
+captura = cv2.VideoCapture(0)
+
+# Configurar codec y formato de video
+fourcc = cv2.VideoWriter_fourcc(*'XVID')
+archivo_salida = cv2.VideoWriter('output.avi', fourcc, 20.0, (640, 480))
+
+# Bandera para activar el efecto espejo
+espejo = False
+
+# Crear ventana para la vista espejo
+cv2.namedWindow('Espejo', cv2.WINDOW_NORMAL)
+
+# Crear ventana para la vista de caricatura
+cv2.namedWindow('Caricatura', cv2.WINDOW_NORMAL)
+
+# Crear ventana para la vista en canal GREEN
+cv2.namedWindow('Canal verde', cv2.WINDOW_NORMAL)
+
+
+# Función para mostrar histograma de una imagen
+def mostrar_histograma(imagen):
+    # Convertir imagen a escala de grises
+    imagen_gris = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
+    # Calcular histograma
+    hist = cv2.calcHist([imagen_gris], [0], None, [256], [0, 256])
+    # Mostrar histograma en una ventana
+    plt.plot(hist)
+    plt.xlim([0, 256])
+    plt.show()
+
+
+while (captura.isOpened()):
+    # Capturar cada frame del video
+    ret, frame = captura.read()
+
+    if ret == True:
+        # Verificar si se debe aplicar el efecto espejo
+        if espejo:
+            frame = cv2.flip(frame, 1)
+
+        # Obtener el canal verde y dejar los otros dos canales en cero
+        green = np.zeros(frame.shape, dtype=np.uint8)
+        green[:, :, 1] = frame[:, :, 1]
+
+        # Mostrar la vista en canal GREEN en la ventana correspondiente
+        cv2.imshow('Caricatura verde', green)
+
+        # Aplicar efecto de caricatura
+        caricatura = cv2.stylization(frame, sigma_s=60, sigma_r=0.07)
+
+        # Mostrar el video en una ventana
+        cv2.imshow('Video', frame)
+
+        # Mostrar la vista espejo en la ventana correspondiente
+        cv2.imshow('Espejo', cv2.flip(frame, 1))
+
+        # Mostrar la vista de caricatura en la ventana correspondiente
+        cv2.imshow('Caricatura', caricatura)
+
+        # Mostrar la vista en canal GREEN en la ventana correspondiente
+        cv2.imshow('Canal verde', green)
+
+        # Obtener el canal verde y dejar los otros dos canales en cero
+        green = np.zeros(frame.shape, dtype=np.uint8)
+        green[:, :, 1] = caricatura[:, :, 1]
+
+        # Mostrar la vista en canal GREEN en la ventana correspondiente
+        cv2.imshow('Caricatura verde', green)
+
+        # Crear una máscara circular para el canal verde
+        center_coordinates = (int(green.shape[1]/2), int(green.shape[0]/2))
+        radius = int(min(green.shape[1], green.shape[0])/2)
+        circular_mask = np.zeros(green.shape[:2], np.uint8)
+        cv2.circle(circular_mask, center_coordinates, radius, 255, -1)
+
+        # Aplicar la máscara circular al canal verde
+        masked_green = cv2.bitwise_and(green, green, mask=circular_mask)
+
+        # Mostrar la vista en canal GREEN con máscara en la ventana correspondiente
+        cv2.imshow('Canal verde con mascara', masked_green)
+
+        # Aplicar umbral a la imagen caricatura
+        umbralizada = cv2.cvtColor(caricatura, cv2.COLOR_BGR2GRAY)
+        _, umbralizada = cv2.threshold(
+            umbralizada, 127, 255, cv2.THRESH_BINARY)
+
+        # Mostrar la imagen umbralizada en la ventana correspondiente
+        cv2.imshow('Umbralizada', umbralizada)
+
+        # Aplicar filtro sepia amarillo
+        sepia_amarillo = np.zeros(frame.shape, dtype=np.uint8)
+        sepia_amarillo[:, :, 0] = 25
+        sepia_amarillo[:, :, 1] = 204
+        sepia_amarillo[:, :, 2] = 255
+        sepia_frame = cv2.addWeighted(frame, 0.6, sepia_amarillo, 0.4, 0)
+
+        # Mostrar la vista con filtro sepia amarillo en la ventana correspondiente
+        cv2.imshow('Filtro sepia', sepia_frame)
+
+        # Aplicar efecto espejo a la imagen original
+        mirror_frame = cv2.flip(frame, 1)
+
+        # Dibujar un rectángulo alrededor de los bordes rojos
+        hsv = cv2.cvtColor(mirror_frame, cv2.COLOR_BGR2HSV)
+        lower_red = np.array([0, 100, 100])
+        upper_red = np.array([10, 255, 255])
+        mask1 = cv2.inRange(hsv, lower_red, upper_red)
+        lower_red = np.array([160, 100, 100])
+        upper_red = np.array([179, 255, 255])
+        mask2 = cv2.inRange(hsv, lower_red, upper_red)
+        mask = cv2.bitwise_or(mask1, mask2)
+        contours, hierarchy = cv2.findContours(
+            mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w*h > 500:
+                cv2.rectangle(mirror_frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+        # Mostrar la imagen con efecto espejo en una nueva ventana
+        cv2.imshow('Espejo con bordes rojos', mirror_frame)
+
+        # Mostrar histograma de la ventana correspondiente al presionar la tecla 'h'
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('h'):
+            mostrar_histograma(frame)
+            mostrar_histograma(cv2.flip(frame, 1))
+            mostrar_histograma(caricatura)
+            mostrar_histograma(green)
+            mostrar_histograma(mirror_frame)
+            mostrar_histograma(sepia_frame)
+            mostrar_histograma(masked_green)
+
+        # Recortar una porción de la imagen caricatura
+        x, y, w, h = 100, 100, 200, 200  # coordenadas y tamaño del recorte
+        recorte = frame[y:y+h, x:x+w]
+
+        # Mostrar la imagen recortada en una nueva ventanah
+        cv2.imshow('Recorte', recorte)
+
+        # Guardar el video en archivo de salidaq
+        archivo_salida.write(frame)
+        # Salir si se presiona la tecla 'q'
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        # Activar el efecto espejo si se presiona la tecla 's'
+        elif cv2.waitKey(1) & 0xFF == ord('s'):
+            espejo = not espejo
+    else:
+        break
+
+# Liberar recursos y cerrar ventanas
+captura.release()
+archivo_salida.release()
+cv2.destroyAllWindows()
